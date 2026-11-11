@@ -1,0 +1,21 @@
+[package]
+name = "deimos-rs"
+version = "0.1.0"
+description = "A Rust extension platform for Yuri's Revenge"
+license = "GPL-3.0-only"
+readme = "README.md"
+documentation = "https://docs.rs/deimos-rs"
+keywords = ["yuris-revenge", "cnc-modding", "dll-injection", "syringe", "game-extension"]
+categories = ["game-development", "development-tools::ffi"]
+include = ["src/**", "Cargo.toml", "build.rs", "README.md", "LICENSE.md"]
+edition = "2024"
+rust-version = "1.85"
+build = "build.rs"
+
+[lib]
+name = "deimos"
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+codegen-units = 1
