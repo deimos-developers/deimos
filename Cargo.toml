@@ -1,6 +1,6 @@
 [package]
 name = "deimos-rs"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Rust extension platform for Yuri's Revenge"
 license = "GPL-3.0-only"
 readme = "README.md"
