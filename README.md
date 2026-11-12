@@ -146,11 +146,13 @@ host-testable core and the Windows DLL:
 - **Linux**: `cargo fmt --all -- --check`, strict clippy
   (`--all-targets --all-features -- -D warnings`), host tests with default and
   all features, and `cargo check --target i686-pc-windows-gnu --all-features`;
-- **Windows**: `cargo test --all-features --target i686-pc-windows-msvc` and a
-  release build with `version-banner dev-console`;
-- **Linux/MinGW**: an `i686-pc-windows-gnu` release build.
+- **Windows matrix**: both `i686-pc-windows-msvc` and `i686-pc-windows-gnu`
+  run `cargo test --all-features --target <target>` and a release build with
+  `version-banner dev-console`; the GNU lane uses MSYS2 MinGW-w64;
+- **Linux/MinGW**: an additional `i686-pc-windows-gnu` release build.
 
-Both Windows-target jobs upload the resulting `deimos.dll` as a build artifact. Run
+Each Windows-target job uploads the resulting `deimos.dll` as a build artifact
+(`deimos-msvc`, `deimos-gnu`, and `deimos-mingw`). Run
 the local equivalents before opening a pull request:
 
 ```sh

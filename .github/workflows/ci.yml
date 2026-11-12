@@ -27,23 +27,49 @@ jobs:
         run: cargo check --target i686-pc-windows-gnu --all-features
 
   windows:
-    name: Windows i686 (MSVC tests and release build)
+    name: Windows i686 (${{ matrix.label }} tests and release build)
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: i686-pc-windows-msvc
+            label: MSVC
+            artifact: deimos-msvc
+            msys2: false
+          - target: i686-pc-windows-gnu
+            label: GNU
+            artifact: deimos-gnu
+            msys2: true
     steps:
       - uses: actions/checkout@v4
+      - name: Set up MSYS2 MinGW-w64
+        if: matrix.msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          update: true
+          install: mingw-w64-i686-gcc
+          path-type: inherit
+      - name: Put MinGW on PATH
+        if: matrix.msys2
+        shell: pwsh
+        run: echo "C:\msys64\mingw32\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: i686-pc-windows-msvc
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: Tests
-        run: cargo test --all-features --target i686-pc-windows-msvc
+        run: cargo test --all-features --target ${{ matrix.target }}
       - name: Release build
-        run: cargo build --release --features "version-banner dev-console" --target i686-pc-windows-msvc
+        run: cargo build --release --features "version-banner dev-console" --target ${{ matrix.target }}
       - name: Upload DLL
         uses: actions/upload-artifact@v4
         with:
-          name: deimos-msvc
-          path: target/i686-pc-windows-msvc/release/deimos.dll
+          name: ${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/deimos.dll
           if-no-files-found: error
 
   mingw:
