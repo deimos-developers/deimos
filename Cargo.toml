@@ -19,6 +19,12 @@ build = "build.rs"
 name = "deimos"
 crate-type = ["cdylib"]
 
+[features]
+default = []
+# Draw the Deimos version in the game screen (experimental, i686 only).
+version-banner = []
+
 [profile.release]
 lto = true
 codegen-units = 1
+panic = "abort"
