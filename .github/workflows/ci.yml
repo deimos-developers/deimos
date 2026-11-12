@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux (fmt, clippy, host tests, Windows GNU check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: i686-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Host tests (default features)
+        run: cargo test
+      - name: Host tests (all features)
+        run: cargo test --all-features
+      - name: Cross-check i686 Windows GNU
+        run: cargo check --target i686-pc-windows-gnu --all-features
+
+  windows:
+    name: Windows i686 (MSVC tests and release build)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --all-features --target i686-pc-windows-msvc
+      - name: Release build
+        run: cargo build --release --features "version-banner dev-console" --target i686-pc-windows-msvc
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: deimos-msvc
+          path: target/i686-pc-windows-msvc/release/deimos.dll
+          if-no-files-found: error
+
+  mingw:
+    name: Windows i686 (GNU release artifact)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Install MinGW-w64
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y gcc-mingw-w64-i686
+      - name: Release build
+        run: cargo build --release --features "version-banner dev-console" --target i686-pc-windows-gnu
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: deimos-mingw
+          path: target/i686-pc-windows-gnu/release/deimos.dll
+          if-no-files-found: error

@@ -23,6 +23,8 @@ crate-type = ["cdylib"]
 default = []
 # Draw the Deimos version in the game screen (experimental, i686 only).
 version-banner = []
+# In-game `~` console with a `cash` command (experimental, i686 only).
+dev-console = []
 
 [profile.release]
 lto = true

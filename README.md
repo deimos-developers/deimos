@@ -7,9 +7,9 @@ for hooks, feature flags, configuration, logging, and gameplay extensions.
 
 The project is currently a **pre-alpha skeleton**. It proves the loading path
 and the version-reporting path and provides a Rust port of the Syringe ABI. The
-default build does not patch game code; the optional, experimental
-`version-banner` feature draws the version in the game screen, modeled on
-Phobos.
+default build does not patch game code. Two optional, experimental features
+are available: a Phobos-style `version-banner` and a `dev-console` with a small
+command registry.
 
 > **Warning**
 >
@@ -46,6 +46,16 @@ The current build provides:
   verified in game with YR 1.001 both with and without Phobos; when
   `Phobos.dll` is loaded the banner moves below Phobos' testing-build warning,
   otherwise it sits at the top edge;
+- an optional `dev-console` feature that opens a small text box in the
+  top-left corner with `~`; typing `cash` and pressing Enter gives the local
+  player 5000 credits. While the console is open, `Game::KeyboardProcess`
+  input is neutralized so the game's hotkeys do not fire. This was verified
+  in a skirmish on YR 1.001 (credits changed from 10000 to 15000, and Escape
+  closed the console without opening the game's options menu);
+- a shared `engine` layer for drawing, hook addresses and the local-player
+  economy, so features do not duplicate engine bindings;
+- a command registry in `console/commands.rs`, designed so new commands can be
+  added without touching keyboard, rendering or hook code;
 - compatibility with the current `syringe-rs` loader.
 
 The version string is compiled from `CARGO_PKG_VERSION`, so a release built
@@ -59,8 +69,11 @@ Deimos 0.1.0
 
 To build Deimos you need:
 
-- a stable Rust toolchain with the `i686-pc-windows-gnu` target;
-- MinGW-w64 (`i686-w64-mingw32-gcc`) on `PATH`;
+- a stable Rust toolchain (1.85 or newer) with a 32-bit Windows target:
+  `i686-pc-windows-gnu` is the reference target, and
+  `i686-pc-windows-msvc` is also supported;
+- MinGW-w64 (`i686-w64-mingw32-gcc`) on `PATH` for the GNU target, or the
+  MSVC build tools for the MSVC target;
 - Cargo.
 
 To run Deimos you need:
@@ -88,11 +101,27 @@ The experimental in-game banner is compiled only when its feature is enabled:
 cargo build --release --target i686-pc-windows-gnu --features version-banner
 ```
 
-Run the unit tests on any host (the game-facing code is `cfg(windows)`):
+The in-game developer console is also feature-gated:
+
+```sh
+cargo build --release --target i686-pc-windows-gnu --features dev-console
+```
+
+Features can be combined, for example
+`--features "version-banner dev-console"`.
+
+Run the unit tests on any host. The default suite covers the Syringe ABI,
+version constants and handshake; enabling `dev-console` adds the pure
+input-buffer and command-registry tests:
 
 ```sh
 cargo test
+cargo test --features dev-console
+cargo test --all-features
 ```
+
+Current local counts are 11 tests for the default build and 18 tests with
+`dev-console` or `--all-features`.
 
 The crates.io package is named `deimos-rs`; the library target and the
 resulting DLL are still named `deimos`.
@@ -108,6 +137,28 @@ Windows GNU target so the `DllMain` export is usable by the Windows loader.
 
 To change the reported version, update `version` in `Cargo.toml` and rebuild.
 No separate version resource is maintained yet.
+
+## Continuous integration
+
+The GitHub Actions workflow in `.github/workflows/ci.yml` validates both the
+host-testable core and the Windows DLL:
+
+- **Linux**: `cargo fmt --all -- --check`, strict clippy
+  (`--all-targets --all-features -- -D warnings`), host tests with default and
+  all features, and `cargo check --target i686-pc-windows-gnu --all-features`;
+- **Windows**: `cargo test --all-features --target i686-pc-windows-msvc` and a
+  release build with `version-banner dev-console`;
+- **Linux/MinGW**: an `i686-pc-windows-gnu` release build.
+
+Both Windows-target jobs upload the resulting `deimos.dll` as a build artifact. Run
+the local equivalents before opening a pull request:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+cargo check --target i686-pc-windows-gnu --all-features
+```
 
 ## Installation and usage
 
@@ -145,8 +196,8 @@ the version string; the loader then continues normally.
 
 ## How it works
 
-Deimos uses Cargo's `cdylib` output and a Windows entry point. Three pieces are
-important:
+Deimos uses Cargo's `cdylib` output and a Windows entry point. The main pieces
+are:
 
 1. **Hook declaration section.** Syringe-compatible loaders look for a
    `.syhks00` section containing 16-byte hook declarations. Deimos emits one
@@ -178,17 +229,58 @@ important:
    runtime: when `Phobos.dll` is loaded it uses `PHOBOS_TEXT_Y = 50` to stay
    below Phobos' warning, otherwise it uses `DEFAULT_TEXT_Y = 5` at the top
    edge.
+5. **Developer console (optional).** With `--features dev-console`, Deimos
+   hooks the same `GScreenClass::DrawText` site and `Game::KeyboardProcess`
+   (0x55DEE0). The `console` module is split by responsibility:
+   `input.rs` owns the bounded ASCII buffer and its tests, `commands.rs` owns
+   the command registry, `keyboard.rs` polls keys and edge-detects them,
+   `draw.rs` renders the box, and `hooks.rs` contains only the hook procs and
+   declarations. `cash` is a normal registry entry that calls
+   `HouseClass::GiveMoney(5000)` on `HouseClass::CurrentPlayer`.
+   While the console is open, the `KeyboardProcess` hook replaces the input
+   DWORD with zero, so the game's hotkeys do not fire. A one-call latch
+   swallows the key that closes the console, covering both hook orderings
+   (the draw hook and `KeyboardProcess` can run in either order). Mouse input
+   and engine paths outside `KeyboardProcess` are not suppressed. The console
+   only supports unshifted letters and digits; it is a development aid, not a
+   general command shell.
 
 The default DLL intentionally has no hook bodies. The loader loads it even
 though it contributes zero hooks; that loader behavior is a small extension
 over the original C++ Syringe loader.
 
-The `version-banner` build declares `gamemd` in `.syexe00`, so loaders that do
-not run a handshake only load it when the executable is named `gamemd.exe`.
+The optional feature builds declare `gamemd` in `.syexe00`, so loaders that do
+not run a handshake only load them when the executable is named `gamemd.exe`.
 Pass `--handshakes` to bypass the host-name check. The declared checksum is
 zero: the loader currently compares names only, and Deimos does not yet verify
-the executable build. This is the main reason to keep the banner behind a
-feature flag.
+the executable build. This is the main reason to keep the engine-patching
+features behind feature flags.
+
+## Extending the console
+
+Commands are deliberately decoupled from the console UI and the engine. The
+registry lives in [`src/console/commands.rs`](src/console/commands.rs):
+
+```rust
+pub(crate) static COMMANDS: &[Command] = &[
+    Command { name: "cash", handler: cash },
+    // Command { name: "heal", handler: heal },
+];
+
+fn heal(args: &[&str]) -> CommandResult {
+    if !args.is_empty() {
+        return CommandResult::Invalid;
+    }
+    // Call a shared engine binding here.
+    CommandResult::Handled
+}
+```
+
+`execute` splits the line on whitespace, matches the command name
+case-insensitively, and passes the remaining arguments to the handler. Add
+engine calls under `src/engine/` rather than inside the console state or
+keyboard code. On non-Windows hosts the `cash` handler is compiled as a no-op,
+so the registry and parser tests run everywhere.
 
 ## Verification
 
@@ -203,6 +295,25 @@ the hook chain, the drawing and fill calls and the composite-surface
 accessors; it does not replace testing on the exact game build a release
 targets.
 
+The `dev-console` build was tested in the same environment. In a skirmish,
+pressing `~` opened the bordered box at the top-left; typing `cash` and
+pressing Enter changed the sidebar credits from `10000` to `15000`. Pressing
+Escape while the console was open closed it without opening the game's
+options menu, confirming that `KeyboardProcess` input is suppressed. The test
+used synthetic `keybd_event` input under Wine, so the same code path still
+needs a manual keyboard test on real hardware. The same sequence was repeated
+after the console was split into modules; the refactored build still opened
+the box, executed `cash` (10000→15000) and closed on Escape without opening
+the options menu.
+
+After the console was split into `engine/` and `console/`, the host test suite
+grew from 11 to 18 tests (`cargo test --features dev-console`): the extra seven
+cover the input buffer and command registry on Linux. The Windows
+`dev-console` and `version-banner dev-console` builds were checked with
+`cargo fmt --check` and `cargo clippy --all-targets --all-features --target
+i686-pc-windows-gnu`; the combined build still has exactly one `.syexe00`
+host declaration and both draw hooks are chained at `0x4F4583`.
+
 ## Project layout
 
 ```text
@@ -212,15 +323,33 @@ deimos/
 ├── src/
 │   ├── lib.rs
 │   ├── syringe_api.rs
-│   └── version_banner.rs
+│   ├── version_banner.rs
+│   ├── engine/
+│   │   ├── mod.rs
+│   │   ├── drawing.rs
+│   │   ├── hooks.rs
+│   │   └── house.rs
+│   └── console/
+│       ├── mod.rs
+│       ├── input.rs
+│       ├── commands.rs
+│       ├── keyboard.rs
+│       ├── draw.rs
+│       └── hooks.rs
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── README.md
 └── LICENSE.md
 ```
 
 `src/lib.rs` contains the version constants, the empty hook declaration, the
-handshake, and `DllMain`. `src/syringe_api.rs` contains the ABI types, the hook
-macros and their tests. `src/version_banner.rs` is the optional, feature-gated
-Phobos-style overlay. The project has no external Rust dependencies.
+handshake, `DllMain` and the single `.syexe00` host declaration shared by both
+features. `src/syringe_api.rs` contains the ABI types, the hook macros and
+their tests. `src/version_banner.rs` is the optional Phobos-style overlay.
+`src/engine/` contains the shared engine bindings; `src/console/` contains the
+console state machine and its feature-gated Windows modules. The project has
+no external Rust dependencies.
 
 ## Roadmap
 
@@ -236,6 +365,14 @@ DLL. Planned areas, in no particular order, include:
 
 These are goals, not commitments. Interfaces will change while the project is
 in pre-alpha.
+
+## Related project
+
+[`syringe-rs`](../syringe-rs) is the loader that consumes Deimos. It has its
+own `syringe_api` module for parsing `.syhks00`/`.syexe00` records; Deimos
+produces those records through `declhook!`/`declhost!`. The two repositories
+are intentionally separate crates, so ABI changes must be made in both and
+covered by both test suites.
 
 ## Interoperability
 
@@ -255,8 +392,10 @@ Windows.
 
 Issues and pull requests are welcome. Before submitting code:
 
-- run `cargo fmt --check`;
-- run `cargo clippy --all-targets`;
+- run `cargo fmt --all -- --check`;
+- run `cargo clippy --all-targets --all-features -- -D warnings`;
+- run `cargo test --all-features`;
+- run `cargo check --target i686-pc-windows-gnu --all-features`;
 - build and test the `i686-pc-windows-gnu` target;
 - do not add original game assets, leaked code, or code of unclear provenance;
 - discuss ABI or loader-visible changes before implementing them.

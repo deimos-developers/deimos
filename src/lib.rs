@@ -5,13 +5,21 @@
 //! loader looks for (`SyringeHandshake`, the feature-flag exports and
 //! `DllMain`).
 //!
-//! The version banner that Phobos draws in the top-right corner of the game
-//! screen is implemented by the `version-banner` feature. It is disabled by
-//! default because it patches engine addresses that must be verified against
-//! the exact `gamemd.exe` build being used.
+//! The optional features are split into small modules:
+//!
+//! - `version-banner` draws the Deimos version in the top-right corner.
+//! - `dev-console` provides the `~` console and the `cash` command.
+//!
+//! Both are disabled by default because they patch engine addresses that must
+//! be verified against the exact `gamemd.exe` build being used.
 
 pub mod syringe_api;
 
+#[cfg(feature = "dev-console")]
+#[cfg_attr(not(windows), allow(dead_code))]
+mod console;
+#[cfg(all(windows, any(feature = "dev-console", feature = "version-banner")))]
+mod engine;
 #[cfg(all(windows, feature = "version-banner"))]
 mod version_banner;
 
@@ -49,6 +57,11 @@ pub const VERSION_UTF16: [u16; VERSION.len() + 1] =
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".syhks00")]
 pub static SYRINGE_HOOK_DECL: HookDecl = HookDecl::new(0, 0, core::ptr::null());
+
+// Declare the supported executable once for every feature that needs it. The
+// loader compares the name (without ".exe") against the running process.
+#[cfg(any(feature = "dev-console", feature = "version-banner"))]
+crate::declhost!(gamemd, 0);
 
 /// `S_OK`.
 const S_OK: i32 = 0;
