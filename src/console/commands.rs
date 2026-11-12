@@ -7,8 +7,12 @@
 /// Result of executing one command line.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum CommandResult {
-    /// The command ran successfully.
+    /// The command ran successfully and has no engine side effect.
+    #[allow(dead_code)] // reserved for future no-effect commands
     Handled,
+    /// Give credits to the local player. The console applies the effect after
+    /// parsing so command tests never touch game memory.
+    GiveMoney(i32),
     /// The command name is unknown.
     Unknown,
     /// The command exists but its arguments are invalid.
@@ -50,15 +54,7 @@ fn cash(args: &[&str]) -> CommandResult {
     if !args.is_empty() {
         return CommandResult::Invalid;
     }
-
-    #[cfg(windows)]
-    // SAFETY: the engine address is resolved by the loader and the console is
-    // only reachable while a mission is running.
-    unsafe {
-        crate::engine::house::give_money(5000);
-    }
-
-    CommandResult::Handled
+    CommandResult::GiveMoney(5000)
 }
 
 #[cfg(test)]
@@ -78,10 +74,10 @@ mod tests {
 
     #[test]
     fn cash_is_known_and_case_insensitive() {
-        // On non-Windows targets the handler is a no-op, which keeps the
-        // command-table tests host-independent.
-        assert_eq!(execute("cash"), CommandResult::Handled);
-        assert_eq!(execute("CaSh"), CommandResult::Handled);
+        // Parsing never dereferences the engine; the console applies the
+        // effect, so this test is safe on Windows as well as Linux.
+        assert_eq!(execute("cash"), CommandResult::GiveMoney(5000));
+        assert_eq!(execute("CaSh"), CommandResult::GiveMoney(5000));
         assert_eq!(execute("cash now"), CommandResult::Invalid);
     }
 }

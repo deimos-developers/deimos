@@ -111,7 +111,21 @@ pub(crate) fn execute_command() {
         let state = lock_state();
         state.input.as_str().to_owned()
     };
-    let _result = commands::execute(&line);
+    match commands::execute(&line) {
+        commands::CommandResult::GiveMoney(amount) => {
+            #[cfg(windows)]
+            // SAFETY: the console is only reachable through the in-game draw
+            // hook, after the engine has initialized CurrentPlayer.
+            unsafe {
+                crate::engine::house::give_money(amount);
+            }
+            #[cfg(not(windows))]
+            let _ = amount;
+        }
+        commands::CommandResult::Handled
+        | commands::CommandResult::Unknown
+        | commands::CommandResult::Invalid => {}
+    }
     close_console();
 }
 
