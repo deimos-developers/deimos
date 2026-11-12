@@ -114,21 +114,21 @@ No separate version resource is maintained yet.
 Place the loader, the DLL, and the target executable in one directory:
 
 ```text
-syringe-rs.exe
+syringe.exe
 deimos.dll
-game.exe
+gamemd.exe
 ```
 
 Start the game through the loader:
 
 ```sh
-syringe-rs.exe game.exe
+syringe.exe gamemd.exe
 ```
 
 With Wine, the equivalent command is:
 
 ```sh
-wine syringe-rs.exe game.exe
+wine syringe.exe gamemd.exe
 ```
 
 The loader writes `syringe.log`. A successful minimal load contains lines
